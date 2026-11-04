@@ -1,52 +1,36 @@
 import serial
 import time
 
+# Abertura da ligação serial com o SoBot (ajuste a porta se necessário)
 s = serial.Serial('/dev/ttyUSB0', 9600, timeout=1)
-time.sleep(2)
-def executar_passo_fixo(comando_led, comando_movimento):
-    s.write(f"LT E1 {comando_led}\n".encode('ascii'))
-    time.sleep(0.1)
-    s.write(f"MT0 {comando_movimento}\n".encode('ascii'))
-    time.sleep(0.1)
+time.sleep(2)  # Estabilização da comunicação serial
 
-# Habilita os motores
-s.write(b"MT0 E1\n")
+def passo_fixo(cor_led, comando_mov):
+    # Configura a cor da fita de LED
+    s.write(f"LT E1 {cor_led}\r\n".encode('ascii'))[cite: 38]
+    time.sleep(0.05)
+    # Envia o comando de movimento fixo
+    s.write(f"MT0 {comando_mov}\r\n".encode('ascii'))[cite: 11, 13]
+    time.sleep(1.5)  # Aguarda a conclusão da ação
+
+# Habilita os motores das rodas
+s.write(b"MT0 E1\r\n")[cite: 11, 13]
 time.sleep(0.5)
 
-# 1. Avançar 10 cm (Verde)
-executar_passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")
+# Sequência do Desafio 001 (10 cm por movimento)
+passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")    # 1. Avançar (Verde)[cite: 11, 13, 38]
+passo_fixo("RD0 GR0 BL255", "D90 L AT500 DT500 V10")    # 2. Esquerda (Azul)[cite: 13, 14, 38]
+passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")    # 3. Avançar (Verde)[cite: 11, 13, 38]
+passo_fixo("RD255 GR255 BL0", "D90 R AT500 DT500 V10")  # 4. Certo/Direita (Amarelo)[cite: 13, 14, 38]
+passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")    # 5. Avançar (Verde)[cite: 11, 13, 38]
+passo_fixo("RD255 GR0 BL0", "D-100 AT500 DT500 V10")   # 6. Para trás (Vermelho)[cite: 11, 13, 38]
+passo_fixo("RD255 GR255 BL0", "D90 R AT500 DT500 V10")  # 7. Certo/Direita (Amarelo)[cite: 13, 14, 38]
+passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")    # 8. Avançar (Verde)[cite: 11, 13, 38]
+passo_fixo("RD255 GR255 BL0", "D90 R AT500 DT500 V10")  # 9. Certo/Direita (Amarelo)[cite: 13, 14, 38]
+passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")    # 10. Avançar (Verde)[cite: 11, 13, 38]
+passo_fixo("RD255 GR255 BL0", "D90 R AT500 DT500 V10")  # 11. Certo/Direita (Amarelo)[cite: 13, 14, 38]
 
-# 2. Esquerda (Azul) - Curva 90° no próprio eixo
-executar_passo_fixo("RD0 GR0 BL255", "D90 L AT500 DT500 V10")
-
-# 3. Avançar 10 cm (Verde)
-executar_passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")
-
-# 4. Direita (Amarelo) - Curva 90° no próprio eixo
-executar_passo_fixo("RD255 GR255 BL0", "D90 R AT500 DT500 V10")
-
-# 5. Avançar 10 cm (Verde)
-executar_passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")
-
-# 6. Para trás 10 cm (Vermelho)
-executar_passo_fixo("RD255 GR0 BL0", "D-100 AT500 DT500 V10")
-
-# 7. Direita (Amarelo)
-executar_passo_fixo("RD255 GR255 BL0", "D90 R AT500 DT500 V10")
-
-# 8. Avançar 10 cm (Verde)
-executar_passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")
-
-# 9. Direita (Amarelo)
-executar_passo_fixo("RD255 GR255 BL0", "D90 R AT500 DT500 V10")
-
-# 10. Avançar 10 cm (Verde)
-executar_passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")
-
-# 11. Direita (Amarelo)
-executar_passo_fixo("RD255 GR255 BL0", "D90 R AT500 DT500 V10")
-
-# Desabilita motores e apaga LEDs
-s.write(b"MT0 E0\n")
-s.write(b"LT E0\n")
+# Desliga os motores e a fita de LED
+s.write(b"MT0 E0\r\n")[cite: 11, 13]
+s.write(b"LT E0\r\n")[cite: 38]
 s.close()
