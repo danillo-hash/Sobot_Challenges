@@ -1,0 +1,53 @@
+import serial
+import time
+
+s = serial.Serial('/dev/ttyUSB0', 9600, timeout=1)
+time.sleep(2)
+
+def executar_passo_fixo(comando_led, comando_movimento):
+    s.write(f"LT E1 {comando_led}\n".encode('ascii'))
+    time.sleep(0.1)
+    s.write(f"MT0 {comando_movimento}\n".encode('ascii'))
+    time.sleep(0.1)
+
+# Habilita os motores
+s.write(b"MT0 E1\n")
+time.sleep(0.5)
+
+# 1. Avançar 10 cm (Verde)
+executar_passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")
+
+# 2. Esquerda (Azul) - Curva 90° no próprio eixo
+executar_passo_fixo("RD0 GR0 BL255", "D90 L AT500 DT500 V10")
+
+# 3. Avançar 10 cm (Verde)
+executar_passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")
+
+# 4. Direita (Amarelo) - Curva 90° no próprio eixo
+executar_passo_fixo("RD255 GR255 BL0", "D90 R AT500 DT500 V10")
+
+# 5. Avançar 10 cm (Verde)
+executar_passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")
+
+# 6. Para trás 10 cm (Vermelho)
+executar_passo_fixo("RD255 GR0 BL0", "D-100 AT500 DT500 V10")
+
+# 7. Direita (Amarelo)
+executar_passo_fixo("RD255 GR255 BL0", "D90 R AT500 DT500 V10")
+
+# 8. Avançar 10 cm (Verde)
+executar_passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")
+
+# 9. Direita (Amarelo)
+executar_passo_fixo("RD255 GR255 BL0", "D90 R AT500 DT500 V10")
+
+# 10. Avançar 10 cm (Verde)
+executar_passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")
+
+# 11. Direita (Amarelo)
+executar_passo_fixo("RD255 GR255 BL0", "D90 R AT500 DT500 V10")
+
+# Desabilita motores e apaga LEDs
+s.write(b"MT0 E0\n")
+s.write(b"LT E0\n")
+s.close()
