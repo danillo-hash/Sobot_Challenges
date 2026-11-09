@@ -1,36 +1,151 @@
-import serial
+#!/usr/bin/python3
+"""
+Solis Robot - SoBot
+Desafio 001: Controlo de Movimento e Sinalização Luminosa
+Execução direta no Raspberry Pi (Raspberry Pi OS)
+"""
+
+import os
+import sys
 import time
+import serial
 
-# Abertura da ligação serial com o SoBot (ajuste a porta se necessário)
-s = serial.Serial('/dev/ttyUSB0', 9600, timeout=1)
-time.sleep(2)  # Estabilização da comunicação serial
+# 1. DETEÇÃO DA PORTA SERIAL NO RASPBERRY PI
+PORTAS_POSSIDEIS = ['/dev/ttyACM0', '/dev/ttyUSB0', '/dev/ttyACM1', '/dev/ttyUSB1']
+BAUD_RATE = 9600  # Parâmetro fixo do microcontrolador SoBot (Seção 5.13)
 
-def passo_fixo(cor_led, comando_mov):
-    # Configura a cor da fita de LED
-    s.write(f"LT E1 {cor_led}\r\n".encode('ascii'))[cite: 38]
-    time.sleep(0.05)
-    # Envia o comando de movimento fixo
-    s.write(f"MT0 {comando_mov}\r\n".encode('ascii'))[cite: 11, 13]
-    time.sleep(1.5)  # Aguarda a conclusão da ação
+def conectar_sobot():
+    """Tenta abrir a ligação serial em qualquer uma das portas padrão do Raspberry Pi."""
+    for porta in PORTAS_POSSIDEIS:
+        if os.path.exists(porta):
+            try:
+                conexao = serial.Serial(
+                    port=porta,
+                    baudrate=BAUD_RATE,
+                    bytesize=serial.EIGHTBITS,
+                    parity=serial.PARITY_NONE,
+                    stopbits=serial.STOPBITS_ONE,
+                    timeout=1.0,
+                    dsrdtr=False
+                )
+                conexao.flush()
+                print(f"[OK] Conectado ao SoBot na porta: {porta} (9600 bps)")
+                return conexao
+            except serial.SerialException as e:
+                print(f"[AVISO] Porta {porta} encontrada, mas ocupada/indisponível: {e}")
+    
+    print("[ERRO] Nenhum robô SoBot foi detetado nas portas USB do Raspberry Pi.")
+    print("Verifique se o cabo USB está ligado e execute: ls /dev/tty*")
+    sys.exit(1)
 
-# Habilita os motores das rodas
-s.write(b"MT0 E1\r\n")[cite: 11, 13]
-time.sleep(0.5)
+# 2. CONFIGURAÇÕES DO DESAFIO
+DIST_MM = 500   # 500 mm por trecho reto
+VEL = 10        # 10 cm/s
+AT = 500        # Aceleração de 500 ms
+DT = 500        # Desaceleração de 500 ms
 
-# Sequência do Desafio 001 (10 cm por movimento)
-passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")    # 1. Avançar (Verde)[cite: 11, 13, 38]
-passo_fixo("RD0 GR0 BL255", "D90 L AT500 DT500 V10")    # 2. Esquerda (Azul)[cite: 13, 14, 38]
-passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")    # 3. Avançar (Verde)[cite: 11, 13, 38]
-passo_fixo("RD255 GR255 BL0", "D90 R AT500 DT500 V10")  # 4. Certo/Direita (Amarelo)[cite: 13, 14, 38]
-passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")    # 5. Avançar (Verde)[cite: 11, 13, 38]
-passo_fixo("RD255 GR0 BL0", "D-100 AT500 DT500 V10")   # 6. Para trás (Vermelho)[cite: 11, 13, 38]
-passo_fixo("RD255 GR255 BL0", "D90 R AT500 DT500 V10")  # 7. Certo/Direita (Amarelo)[cite: 13, 14, 38]
-passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")    # 8. Avançar (Verde)[cite: 11, 13, 38]
-passo_fixo("RD255 GR255 BL0", "D90 R AT500 DT500 V10")  # 9. Certo/Direita (Amarelo)[cite: 13, 14, 38]
-passo_fixo("RD0 GR255 BL0", "D100 AT500 DT500 V10")    # 10. Avançar (Verde)[cite: 11, 13, 38]
-passo_fixo("RD255 GR255 BL0", "D90 R AT500 DT500 V10")  # 11. Certo/Direita (Amarelo)[cite: 13, 14, 38]
+# Timeout calculado (Distância + Rampas + Margem de 5s)
+TIMEOUT_PASSO = (DIST_MM / (VEL * 10)) + ((AT + DT) / 1000) + 5.0
 
-# Desliga os motores e a fita de LED
-s.write(b"MT0 E0\r\n")[cite: 11, 13]
-s.write(b"LT E0\r\n")[cite: 38]
-s.close()
+# Cores RGB em intensidade moderada (50) para poupar bateria
+CORES = {
+    "VERDE":    "LT E1 RD0 GR50 BL0",
+    "AZUL":     "LT E1 RD0 GR0 BL50",
+    "AMARELO":  "LT E1 RD50 GR50 BL0",
+    "VERMELHO": "LT E1 RD50 GR0 BL0"
+}
+
+# Movimentos em modo fixo (curvas no próprio eixo)
+MOVIMENTOS = {
+    "AVANCAR":  f"MT0 D{DIST_MM} AT{AT} DT{DT} V{VEL}",
+    "TRAS":     f"MT0 D-{DIST_MM} AT{AT} DT{DT} V{VEL}",
+    "ESQUERDA": f"MT0 D90 L AT{AT} DT{DT} V{VEL}",
+    "DIREITA":  f"MT0 D90 R AT{AT} DT{DT} V{VEL}"
+}
+
+# Sequência oficial do Desafio 001
+SEQUENCIA = [
+    ("AVANCAR",  "VERDE"),     # 1
+    ("ESQUERDA", "AZUL"),      # 2
+    ("AVANCAR",  "VERDE"),     # 3
+    ("DIREITA",  "AMARELO"),   # 4 ("Certo" = Direita)
+    ("AVANCAR",  "VERDE"),     # 5
+    ("TRAS",     "VERMELHO"),  # 6
+    ("DIREITA",  "AMARELO"),   # 7
+    ("AVANCAR",  "VERDE"),     # 8
+    ("DIREITA",  "AMARELO"),   # 9
+    ("AVANCAR",  "VERDE"),     # 10
+    ("DIREITA",  "AMARELO")    # 11
+]
+
+def enviar(conexao, comando):
+    """Envia uma instrução em texto ASCII codificada em bytes."""
+    conexao.write(comando.encode('ascii'))
+    time.sleep(0.04)  # Evita colisão de pacotes no buffer UART
+
+def aguardar_confirmacao(conexao, timeout_seg):
+    """Aguarda o retorno 'CR OK MT0' enviado pelo SoBot ao concluir o movimento."""
+    limite = time.time() + timeout_seg
+    while time.time() < limite:
+        if conexao.in_waiting > 0:
+            linha = conexao.readline().decode('ascii', errors='ignore').strip()
+            if not linha:
+                continue
+            if "ERROR" in linha:
+                raise RuntimeError(f"Erro no hardware SoBot: {linha}")
+            if "CR OK MT0" in linha:
+                return
+        time.sleep(0.01)
+    raise TimeoutError("Tempo limite esgotado a aguardar a conclusão do movimento.")
+
+def executar_desafio():
+    usb = conectar_sobot()
+    time.sleep(2.0)  # Tempo de estabilização da comunicação
+    
+    interrompido = False
+    try:
+        # Ativa retornos dos motores (CR1) e liga a alimentação
+        enviar(usb, "MT0 CR1")
+        enviar(usb, "MT0 E1")
+        time.sleep(0.2)
+
+        print("\n--- INICIANDO PERCURSO DO DESAFIO 001 NO RASPBERRY PI ---")
+        total = len(SEQUENCIA)
+        
+        for i, (direcao, cor) in enumerate(SEQUENCIA, start=1):
+            print(f"[{i:02d}/{total:02d}] Passo: {direcao:<8} | LED: {cor}")
+            
+            # Limpa o buffer de entrada da serial
+            usb.reset_input_buffer()
+            
+            # Envia a cor do LED e a instrução de movimento
+            enviar(usb, CORES[cor])
+            enviar(usb, MOVIMENTOS[direcao])
+            
+            # Bloqueia até o SoBot concluir o movimento fisicamente na pista
+            aguardar_confirmacao(usb, TIMEOUT_PASSO)
+
+        print("\n[SUCESSO] Sequência concluída com precisão!")
+
+    except KeyboardInterrupt:
+        print("\n[ALERTA] Execução interrompida via teclado (Ctrl+C).")
+        interrompido = True
+    except Exception as e:
+        print(f"\n[ERRO] Ocorreu uma falha: {e}")
+        interrompido = True
+    finally:
+        if usb and usb.is_open:
+            if interrompido:
+                print("A aplicar travagem de emergência suave (MT0 BC)...")
+                enviar(usb, "MT0 BC")
+                time.sleep((DT / 1000.0) + 0.5)
+
+            print("A desativar motores e fita LED...")
+            enviar(usb, "MT0 E0")
+            enviar(usb, "LT E0")
+            time.sleep(0.2)
+            usb.close()
+            print("Conexão serial encerrada com segurança.")
+
+if __name__ == "__main__":
+    executar_desafio()
