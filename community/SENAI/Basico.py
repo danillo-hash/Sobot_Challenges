@@ -2,8 +2,8 @@
 """
 Solis Robot - SoBot
 
-Desafio001.py: Resolução do Desafio 001 com rampas corrigidas (AT500/DT500)
-para curvas exatas de 90° e deslocamento 100% de frente no retorno.
+Desafio001.py: Resolução completa do Desafio 001 com giro de 180° no final 
+para retornar e alinhar na posição de Início.
 
 Company: Solis Tecnologia
 """
@@ -28,7 +28,7 @@ usb.write(b"LT E1 RD0 GR50 BL0")
 usb.write(b"MT0 E1 D500 AT1000 DT1000 V10")
 sleep(6.0)
 
-# 2. Giro de 90° à Esquerda (Rampa de 500ms para giro completo) | LED Azul
+# 2. Giro de 90° à Esquerda | LED Azul
 usb.write(b"LT E1 RD0 GR0 BL50")
 usb.write(b"MT0 E1 D90 L AT500 DT500 V10")
 sleep(3.5)
@@ -65,7 +65,7 @@ sleep(6.0)
 # 3. PERCURSO ROXO DE RETORNO AO INÍCIO
 # ==========================================
 
-# 7. Giro de 90° à Esquerda (para seguir para a direita no papel) | LED Amarelo
+# 7. Giro de 90° à Esquerda | LED Amarelo
 usb.write(b"LT E1 RD50 GR50 BL0")
 usb.write(b"MT0 E1 D90 L AT500 DT500 V10")
 sleep(3.5)
@@ -75,20 +75,20 @@ usb.write(b"LT E1 RD0 GR50 BL0")
 usb.write(b"MT0 E1 D500 AT1000 DT1000 V10")
 sleep(6.0)
 
-# 9. Giro de 90° à Direita (para descer no papel) | LED Amarelo
+# 9. Giro de 90° à Direita | LED Amarelo
 usb.write(b"LT E1 RD50 GR50 BL0")
 usb.write(b"MT0 E1 D90 R AT500 DT500 V10")
 sleep(3.5)
 
-# 10. Avançar (500mm - chega ao lado da posição de início) | LED Verde
+# 10. Avançar (500mm - desce até ao lado da posição de Início) | LED Verde
 usb.write(b"LT E1 RD0 GR50 BL0")
 usb.write(b"MT0 E1 D500 AT1000 DT1000 V10")
 sleep(6.0)
 
-# 11. Giro de 90° à Esquerda para entrar de frente na posição inicial | LED Amarelo
+# 11. Giro de 180° à Direita para dar a volta e entrar no Início | LED Amarelo
 usb.write(b"LT E1 RD50 GR50 BL0")
-usb.write(b"MT0 E1 D90 L AT500 DT500 V10")
-sleep(3.5)
+usb.write(b"MT0 E1 D180 R AT1000 DT1000 V10")
+sleep(5.5)
 
 # Finalização: Desliga a fita LED e os motores
 usb.write(b"LT E0")
