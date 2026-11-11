@@ -1,147 +1,160 @@
 #!/usr/bin/python3
 """
 Solis Robot - SoBot
+Challenge 002 - SOBOT FORK LIFT (Código Corrigido e Completo)
 
-Desafio001.py: Resolução do Desafio 001 com áudio do Bluetooth no início 
-e efeito sonoro ("Butterfly") executado a cada curva.
-
-Company: Solis Tecnologia
+Empresa: Solis Tecnologia
 """
 
-import os
 from time import sleep
 import serial
-import pygame
 
-# --- NOMES DOS FICHEIROS DE ÁUDIO ---
-AUDIO_INICIO = "bluetooth_ready.mp3"
-AUDIO_CURVA = "butterfly.mp3"
+# ---------------------------------------------------------------------------
+# CONFIGURAÇÃO DA PORTA SERIAL
+# ---------------------------------------------------------------------------
+# Define a porta serial com timeout adequado para a leitura dos sensores
+usb = serial.Serial('/dev/ttyACM0', 9600, timeout=0.1, dsrdtr=False)
+usb.flush()  # Limpa o buffer de dados serial
 
-def inicializar_audio():
-    """Inicializa o sistema de som do Pygame."""
+def send_cmd(command_str):
+    """Envia um comando formatado para a placa principal do SoBot"""
+    usb.write(f"{command_str}\n".encode('utf-8'))
+    sleep(0.05)
+
+def set_led(r, g, b):
+    """Ajusta a cor da fita LED RGB do SoBot"""
+    send_cmd(f"LT E1 RD{r} GR{g} BL{b}")
+
+def set_lift(angle):
+    """
+    Aciona o servo/motor do Módulo Garfo Elevador (Porta SV1)
+    angle: 20 (Garfo Baixo / Pousado) | 110 (Garfo Alto / Suspenso)
+    """
+    send_cmd(f"SV1 P{angle}")
+    sleep(1.5)  # Aguarda a conclusão do movimento mecânico
+
+def enable_motors(enable=True):
+    """Habilita (E1) ou desabilita (E0) os motores de tração"""
+    status = "E1" if enable else "E0"
+    send_cmd(f"MT0 {status}")
+
+def drive_direct(left_speed, right_speed):
+    """Define a velocidade contínua das rodas esquerda e direita"""
+    send_cmd(f"MT0 V1 L{left_speed} R{right_speed}")
+
+def stop_motors():
+    """Para a movimentação do robô imediatamente"""
+    drive_direct(0, 0)
+    sleep(0.1)
+
+def read_sensors():
+    """
+    Requisita e lê o estado dos sensores IV da placa seguidora de linha.
+    Retorna: (sensor_esquerdo, sensor_direito, sensor_marcador_lateral)
+    1 = Fita Preta Detetada | 0 = Superfície Clara
+    """
+    send_cmd("SE")
+    line = usb.readline().decode('utf-8', errors='ignore').strip()
+    
+    s_left, s_right, s_marker = 0, 0, 0
+    if "SE" in line or ":" in line:
+        parts = line.split()
+        for part in parts:
+            if "S1:" in part:
+                s_left = int(part.split(":")[1])
+            elif "S2:" in part:
+                s_right = int(part.split(":")[1])
+            elif "S3:" in part:
+                s_marker = int(part.split(":")[1])
+    return s_left, s_right, s_marker
+
+def follow_line_step(base_speed=100):
+    """
+    Executa o ajuste de trajetória na linha preta principal.
+    Retorna True quando o sensor lateral (S3) lê o marcador de fita.
+    """
+    s_left, s_right, s_marker = read_sensors()
+    
+    # Correção de direção baseada nos sensores frontais
+    if s_left == 1 and s_right == 0:
+        drive_direct(40, base_speed)         # Ajusta para a esquerda
+    elif s_left == 0 and s_right == 1:
+        drive_direct(base_speed, 40)         # Ajusta para a direita
+    else:
+        drive_direct(base_speed, base_speed) # Avança em frente
+        
+    return (s_marker == 1)
+
+# ---------------------------------------------------------------------------
+# FLUXO DE EXECUÇÃO DA MISSÃO COMPLETA
+# ---------------------------------------------------------------------------
+def main():
+    print("A iniciar o Desafio 002 - SOBOT FORK LIFT...")
+    
     try:
-        pygame.mixer.init()
-    except Exception as e:
-        print(f"[AVISO] Não foi possível inicializar áudio: {e}")
+        # 1. INICIALIZAÇÃO DO SISTEMA
+        enable_motors(True)
+        set_led(50, 0, 0)    # LED Vermelho: Preparação
+        set_lift(20)         # Assegura o garfo na posição inferior
+        sleep(1.0)
 
-def tocar_inicio():
-    """Toca o som do Bluetooth ao ligar o robô."""
-    if os.path.exists(AUDIO_INICIO):
-        try:
-            pygame.mixer.music.load(AUDIO_INICIO)
-            pygame.mixer.music.play()
-            print('[ÁUDIO] "The bluetooth device is ready to pair"')
-        except Exception as e:
-            print(f"[AVISO] Erro ao tocar áudio inicial: {e}")
+        # 2. RECOLHA NO PONTO INICIAL (Collect Point)
+        set_led(50, 25, 0)   # LED Laranja: A recolher a carga
+        # Avança 150 mm para introduzir o garfo sob o palete
+        send_cmd("MT0 E1 D150 AT1500 DT1500 V10")
+        sleep(2.5)
+        
+        # Eleva o garfo para suspender a carga[cite: 1, 2]
+        set_lift(110)
+        sleep(1.0)
 
-def tocar_curva():
-    """Toca o efeito sonoro ("Butterfly") em cada curva."""
-    if os.path.exists(AUDIO_CURVA):
-        try:
-            som = pygame.mixer.Sound(AUDIO_CURVA)
-            som.play()
-            print('[ÁUDIO] 🎵 Efeito de curva: "Butterfly"')
-        except Exception as e:
-            print(f"[AVISO] Erro ao tocar áudio de curva: {e}")
+        # 3. NAVEGAÇÃO DE IDA (Seguir Linha até ao Deposit Point)[cite: 1, 2]
+        set_led(0, 50, 0)    # LED Verde: Em transporte
+        print("A seguir a linha até ao Ponto de Depósito...")
+        
+        while True:
+            marker_reached = follow_line_step(base_speed=110)
+            if marker_reached:
+                print("Marcador do Ponto de Depósito detetado!")
+                stop_motors()
+                break
+            sleep(0.03)
 
+        # 4. DEPÓSITO DA CARGA (Deposit Point)[cite: 1, 2]
+        set_led(50, 50, 0)   # LED Amarelo: Descarga
+        set_lift(20)         # Baixa o garfo para pousar o palete no chão[cite: 1, 2]
+        sleep(1.0)
+        
+        # Recua 150 mm para retirar o garfo de baixo do palete[cite: 1, 2]
+        send_cmd("MT0 E1 D-150 AT1500 DT1500 V10")
+        sleep(2.5)
+        
+        # Executa rotação de 180° para alinhar com o sentido de regresso[cite: 1, 2]
+        send_cmd("MT0 E1 D180 R AT3000 DT3000 V10")
+        sleep(3.5)
 
-# ==========================================
-# INICIALIZAÇÃO DA CONEXÃO E ÁUDIO
-# ==========================================
+        # 5. PERCURSO DE REGRESSO (Seguir Linha até ao Start Point)[cite: 1, 2]
+        set_led(0, 50, 50)   # LED Ciano: A regressar
+        print("A regressar à linha de partida...")
+        
+        while True:
+            marker_reached = follow_line_step(base_speed=110)
+            if marker_reached:
+                print("Marcador de Partida detetado! Missão Concluída.")
+                stop_motors()
+                break
+            sleep(0.03)
 
-inicializar_audio()
+        # 6. FINALIZAÇÃO
+        set_led(0, 0, 0)      # Desliga os LEDs
+        enable_motors(False)  # Desativa a alimentação dos motores
+        print("Desafio 002 concluído com sucesso!")
 
-# Configuração da porta serial (9600 bps padrão Solis)
-usb = serial.Serial('/dev/ttyACM0', 9600, timeout=0, dsrdtr=False)
-usb.flush()
+    except KeyboardInterrupt:
+        print("\nMissão interrompida pelo utilizador.")
+        stop_motors()
+        enable_motors(False)
+        usb.close()
 
-# Toca o som inicial do Bluetooth
-tocar_inicio()
-
-# Habilita os motores das rodas
-usb.write(b"MT0 E1")
-sleep(0.5)
-
-# ==========================================
-# 1. PERCURSO AZUL (IDA)
-# ==========================================
-
-# 1. Avançar (500mm) | LED Verde
-usb.write(b"LT E1 RD0 GR50 BL0")
-usb.write(b"MT0 E1 D500 AT1000 DT1000 V10")
-sleep(6.0)
-
-# 2. Giro de 90° à Esquerda | LED Azul + SOM DA CURVA
-tocar_curva()
-usb.write(b"LT E1 RD0 GR0 BL50")
-usb.write(b"MT0 E1 D90 L AT500 DT500 V10")
-sleep(3.5)
-
-# 3. Avançar (500mm) | LED Verde
-usb.write(b"LT E1 RD0 GR50 BL0")
-usb.write(b"MT0 E1 D500 AT1000 DT1000 V10")
-sleep(6.0)
-
-# 4. Giro de 90° à Direita | LED Amarelo + SOM DA CURVA
-tocar_curva()
-usb.write(b"LT E1 RD50 GR50 BL0")
-usb.write(b"MT0 E1 D90 R AT500 DT500 V10")
-sleep(3.5)
-
-# 5. Avançar (500mm - topo do trecho azul) | LED Verde
-usb.write(b"LT E1 RD0 GR50 BL0")
-usb.write(b"MT0 E1 D500 AT1000 DT1000 V10")
-sleep(6.0)
-
-# ==========================================
-# 2. TRANSIÇÃO: MEIA-VOLTA (180°) E ROXO DE FRENTE
-# ==========================================
-
-# 6a. Meia-volta de 180° no topo | LED Vermelho + SOM DA CURVA
-tocar_curva()
-usb.write(b"LT E1 RD50 GR0 BL0")
-usb.write(b"MT0 E1 D180 R AT1000 DT1000 V10")
-sleep(5.5)
-
-# 6b. Avançar de frente (500mm) no trecho roxo | LED Vermelho
-usb.write(b"MT0 E1 D500 AT1000 DT1000 V10")
-sleep(6.0)
-
-# ==========================================
-# 3. PERCURSO ROXO DE RETORNO AO INÍCIO
-# ==========================================
-
-# 7. Giro de 90° à Esquerda | LED Amarelo + SOM DA CURVA
-tocar_curva()
-usb.write(b"LT E1 RD50 GR50 BL0")
-usb.write(b"MT0 E1 D90 L AT500 DT500 V10")
-sleep(3.5)
-
-# 8. Avançar (500mm) | LED Verde
-usb.write(b"LT E1 RD0 GR50 BL0")
-usb.write(b"MT0 E1 D500 AT1000 DT1000 V10")
-sleep(6.0)
-
-# 9. Giro de 90° à Direita | LED Amarelo + SOM DA CURVA
-tocar_curva()
-usb.write(b"LT E1 RD50 GR50 BL0")
-usb.write(b"MT0 E1 D90 R AT500 DT500 V10")
-sleep(3.5)
-
-# 10. Avançar (500mm - desce até ao lado do Início) | LED Verde
-usb.write(b"LT E1 RD0 GR50 BL0")
-usb.write(b"MT0 E1 D500 AT1000 DT1000 V10")
-sleep(6.0)
-
-# 11. Giro de 180° à Direita para alinhar no Início | LED Amarelo + SOM DA CURVA
-tocar_curva()
-usb.write(b"LT E1 RD50 GR50 BL0")
-usb.write(b"MT0 E1 D180 R AT1000 DT1000 V10")
-sleep(5.5)
-
-# Finalização: Parar áudios, desligar LEDs e motores
-pygame.mixer.stop()
-usb.write(b"LT E0")
-usb.write(b"MT0 E0")
-sleep(0.5)
-usb.close()
+if __name__ == "__main__":
+    main()
